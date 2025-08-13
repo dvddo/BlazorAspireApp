@@ -1,0 +1,107 @@
+﻿@page "/register"
+
+@using static BlazorAspireApp.Web.AuthorizationApiClient
+@rendermode InteractiveServer
+@inject AuthorizationApiClient authApi
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+
+<h3>Register</h3>
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@code {
+    private RegistrationModel registrationModel = new();
+    private string? errorMessage;
+
+    private async Task HandleValidSubmit()
+    {
+        if (registrationModel.Password != registrationModel.ConfirmPassword)
+        {
+            // Handle password mismatch
+            Console.WriteLine("Passwords do not match!");
+            return;
+        }
+        else
+        {
+            RegisterResponse response = await authApi.RegisterAsync(registrationModel.Username, registrationModel.Password);
+            // Replace this with your actual authentication logic
+            if (response.status == null && response.status == -800)
+            {
+                // Redirect or handle successful login
+                LoginResponse lresponse = await authApi.LoginAsync(registrationModel.Username, registrationModel.Password);
+                // Replace this with your actual authentication logic
+                if (lresponse.expiresIn > 0)
+                {
+                    await JSRuntime.InvokeVoidAsync("localStorage.setItem", "accessToken", lresponse.accessToken);
+                    errorMessage = null;
+                    // Redirect or handle successful login
+                    Console.WriteLine("Login successful!");
+                    Navigation.NavigateTo("/");
+                }
+                else
+                {
+                    errorMessage = "Invalid username or password.";
+                }
+            }
+            else
+            {
+                errorMessage = "Invalid username or password.";
+            }
+        }
+
+        // Handle registration logic (e.g., save to database, call API, etc.)
+        Console.WriteLine($"User {registrationModel.Username} registered successfully!");
+    }
+
+    public class RegistrationModel
+    {
+        [Required]
+        public string Username { get; set; }
+
+        [Required]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters long.")]
+        public string Password { get; set; }
+
+        [Required]
+        [Compare("Password", ErrorMessage = "Passwords do not match.")]
+        public string ConfirmPassword { get; set; }
+    }
+}
+
+<PageTitle>Register</PageTitle>
+
+<div class="row">
+    <div class="col-lg-6">
+        <EditForm Model="@registrationModel" OnValidSubmit="HandleValidSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-floating mb-3">
+                
+                <InputText id="username" @bind-Value="registrationModel.Username" class="form-control" />
+                <label for="username" class="form-label">Username:</label>
+            </div>
+
+            <div class="form-floating mb-3">
+                
+                <InputText id="password" @bind-Value="registrationModel.Password" type="password" class="form-control" />
+                <label for="password" class="form-label">Password:</label>
+            </div>
+
+            <div class="form-floating mb-3">
+                
+                <InputText id="confirmPassword" @bind-Value="registrationModel.ConfirmPassword" type="password" class="form-control" />
+                <label for="confirmPassword" class="form-label">Confirm Password:</label>
+            </div>
+            <div>
+                <button type="submit" class="w-100 btn btn-lg btn-primary">Register</button>
+            </div>
+            
+        </EditForm>
+
+    </div>
+</div>

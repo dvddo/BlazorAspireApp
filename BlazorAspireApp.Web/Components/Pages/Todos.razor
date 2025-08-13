@@ -1,0 +1,344 @@
+﻿@page "/todos"
+@rendermode InteractiveServer
+@using System.Linq
+@using static BlazorAspireApp.Web.TodoListsApiClient
+@inject TodoListsApiClient TodoListsApi
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Todo Manager</PageTitle>
+
+<h1 class="mb-4">Todo Manager</h1>
+
+<div class="row">
+    <!-- All Todo Lists -->
+    <div class="col-4 border-end pe-3">
+        <h3>Lists</h3>
+        <ul class="list-group">
+            @foreach (var list in TodoListsResponse?.lists ?? [])
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center
+                               @(SelectedList?.id == list.id ? "active" : "")"
+                    role="button"
+                    @onclick="() => SelectList(list)"
+                    @ondragover="(e) => OnListDragOver(e)"
+                    @ondrop="(e) => OnListDrop(e, list)"
+                    @ondragover:preventDefault="true"
+                    @ondrop:preventDefault="true">
+                    <span>@list.title</span>
+                    <span class="badge bg-secondary rounded-pill">@list.items.Count</span>
+                </li>
+            }
+        </ul>
+        <button class="btn btn-primary btn-sm mt-3" @onclick="ShowAddListDialog">Add New List</button>
+    </div>
+
+    <!-- Selected List Items -->
+    <div class="col-8 ps-3">
+        @if (SelectedList is not null)
+        {
+            <h3>@SelectedList.title</h3>
+            <ul class="list-group">
+                @foreach (var item in SelectedList.items)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center"
+                        draggable="true"
+                        @ondragstart="(e) => OnItemDragStart(e, item)">
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="checkbox" checked="@item.done" @onchange="(e) => ToggleDone(item, e)" />
+                            @if (EditingItem == item)
+                            {
+                                <input class="form-control form-control-sm"
+                                       style="width: 250px;"
+                                       @bind="EditingTitle"
+                                       @bind:event="oninput"
+                                       @onkeydown="(e) => HandleEditKey(e, item)"
+                                       autofocus />
+                            }
+                            else
+                            {
+                                <span class="@(item.done ? "text-decoration-line-through" : "")"
+                                      @ondblclick="() => StartEditing(item)">
+                                    @item.title
+                                </span>
+                            }
+                        </div>
+                        <div>
+                            <button class="btn btn-outline-secondary btn-sm"
+                                    @onclick="() => StartEditing(item)">
+                                Edit
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm"
+                                    @onclick="() => DeleteItem(item)">
+                                Delete
+                            </button>
+                        </div>
+                    </li>
+                }
+            </ul>
+            <button class="btn btn-success btn-sm mt-3" @onclick="ShowAddItemDialog">Add New Item</button>
+        }
+        else
+        {
+            <p class="text-muted">Select a list to view its items.</p>
+        }
+    </div>
+</div>
+
+<!-- Add List Dialog -->
+@if (IsAddListDialogVisible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Todo List</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddListDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <input class="form-control" @bind="NewListTitle" placeholder="List title" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddListDialog">Cancel</button>
+                    <button class="btn btn-primary" @onclick="AddList">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add Item Dialog -->
+@if (IsAddItemDialogVisible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Todo Item</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddItemDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <input class="form-control" @bind="NewItemTitle" placeholder="Item title" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddItemDialog">Cancel</button>
+                    <button class="btn btn-success" @onclick="AddItem">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // Provided data structure from the project
+    private ToDoListsResponse? TodoListsResponse { get; set; } = new()
+    {
+        lists = new List<TodoList>()
+    };
+
+    private TodoList? SelectedList;
+    private TodoItem? EditingItem;
+    private string EditingTitle = string.Empty;
+
+    // Dialog state
+    private bool IsAddListDialogVisible;
+    private bool IsAddItemDialogVisible;
+
+    // New list/item inputs
+    private string NewListTitle = string.Empty;
+    private string NewItemTitle = string.Empty;
+    private int NewItemListId = 0;
+
+    protected override void OnInitialized()
+    {
+        // Example initialization if no data source yet
+        TodoListsResponse.lists.Add(new TodoList
+        {
+            id = -1,
+            title = "Sample List",
+            items = new List<TodoItem>
+            {
+                new() { id = -1, title = "Example item", done = false }
+            }
+        });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                TodoListsResponse = await TodoListsApi.GetTodoListsAsync(JSRuntime);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching todo lists: {ex.Message}");
+            }
+        
+            StateHasChanged();
+        }
+    }
+
+    private void SelectList(TodoList list)
+    {
+        SelectedList = list;
+        EditingItem = null;
+        StateHasChanged();
+    }
+
+    private void ShowAddListDialog() => IsAddListDialogVisible = true;
+    private void CloseAddListDialog() => IsAddListDialogVisible = false;
+
+    private async Task AddList()
+    {
+        if (!string.IsNullOrWhiteSpace(NewListTitle))
+        {
+            var list = new TodoList
+            {
+                title = NewListTitle,
+                items = new List<TodoItem>()
+            };
+
+            if (TodoListsResponse.lists.Max(lst=>lst.id) < 0)
+            {
+                list.id = TodoListsResponse.lists.Min(lst => lst.id) - 1;
+            }
+            else
+            {
+                list.id = await TodoListsApi.CreateTodoListAsync(JSRuntime, list.title);
+            }
+            TodoListsResponse!.lists.Add(list);
+            NewListTitle = string.Empty;
+            CloseAddListDialog();
+        }
+    }
+
+    private void ShowAddItemDialog() => IsAddItemDialogVisible = true;
+    private void CloseAddItemDialog() => IsAddItemDialogVisible = false;
+
+    private async void AddItem()
+    {
+        if (SelectedList is not null && !string.IsNullOrWhiteSpace(NewItemTitle))
+        {
+            var newItem = new TodoItem
+                {
+                    listId = SelectedList.id,
+                    title = NewItemTitle,
+                    done = false
+                };
+            if (SelectedList.id < 0)
+            {
+                newItem.id = SelectedList.items.Min(lid => lid.id) - 1;
+            }
+            else
+            {
+                newItem.id = await TodoListsApi.CreateTodoItemAsync(JSRuntime, newItem.listId, newItem.title);
+            }
+            SelectedList.items.Add(newItem);
+            NewItemTitle = string.Empty;
+            CloseAddItemDialog();
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleDone(TodoItem item, ChangeEventArgs e)
+    {
+        item.done = (bool?)e.Value ?? false;
+        if (item.id > 0)
+        {
+            var res = TodoListsApi.UpdateTodoItemAsync(JSRuntime, item.id, item.listId, item.title, item.done);
+        }
+        StateHasChanged();
+    }
+
+    private void StartEditing(TodoItem item)
+    {
+        EditingItem = item;
+        EditingTitle = item.title;
+    }
+
+    private void DeleteItem(TodoItem item)
+    {
+        if (SelectedList is not null)
+        {
+            SelectedList.items.Remove(item);
+            if (item.id > 0)
+            {
+                var res = TodoListsApi.DeleteTodoItemAsync(JSRuntime, item.id);
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void HandleEditKey(KeyboardEventArgs e, TodoItem item)
+    {
+        if (e.Key == "Enter")
+        {
+            item.title = EditingTitle;
+            if (item.id > 0)
+            {
+                var res = TodoListsApi.UpdateTodoItemAsync(JSRuntime, item.id, item.listId, item.title, item.done);
+            }
+            EditingItem = null;
+            StateHasChanged();
+        }
+        else if (e.Key == "Escape")
+        {
+            EditingItem = null;
+        }
+    }
+
+    private TodoItem? DraggedItem;
+
+    private async void OnItemDragStart(DragEventArgs e, TodoItem item)
+    {
+        DraggedItem = item;
+        //e.DataTransfer?.SetData("text/plain", item.id.ToString());
+        await JSRuntime.InvokeVoidAsync("startDrag", item.id.ToString());
+    }
+
+    private void OnListDragOver(DragEventArgs e)
+    {
+        //e.PreventDefault();
+    }
+
+    private async void OnListDrop(DragEventArgs e, TodoList targetList)
+    {
+        //e.PreventDefault();
+        if (DraggedItem is null || targetList.id == DraggedItem.listId)
+            return;
+
+        // Remove from old list
+        var oldList = TodoListsResponse?.lists.FirstOrDefault(l => l.id == DraggedItem.listId);
+        oldList?.items.Remove(DraggedItem);
+
+        // Update item's listId and add to new list
+        DraggedItem.listId = targetList.id;
+        targetList.items.Add(DraggedItem);
+
+        // Persist change to backend if needed
+        if (DraggedItem.id > 0)
+        {
+            await TodoListsApi.UpdateTodoItemAsync(JSRuntime, DraggedItem.id, DraggedItem.listId, DraggedItem.title, DraggedItem.done);
+        }
+
+        DraggedItem = null;
+        StateHasChanged();
+    }
+}
+<script>
+        window.startDrag = (data) => {
+        document.addEventListener("dragstart", (event) => {
+            event.dataTransfer.setData("text/plain", data);
+        });
+    };
+
+    window.getDragData = () => {
+        return new Promise((resolve) => {
+            document.addEventListener("drop", (event) => {
+                resolve(event.dataTransfer.getData("text/plain"));
+            });
+        });
+    };
+
+</script>

@@ -1,0 +1,2 @@
+Add-Migration InitialCreate -StartupProject BlazorAspireApp.ApiService
+//with Default project set to Infrastructure

@@ -1,0 +1,9 @@
+﻿global using System;
+global using System.Collections.Generic;
+global using System.Linq;
+global using BlazorAspireApp.Domain.Common;
+global using BlazorAspireApp.Domain.Entities;
+global using BlazorAspireApp.Domain.Enums;
+global using BlazorAspireApp.Domain.Events;
+global using BlazorAspireApp.Domain.Exceptions;
+global using BlazorAspireApp.Domain.ValueObjects;
